@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <!-- モバイル向け -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0,minimum-scale=1.0,maximum-scale=1.0,user-scalable=no"
+    />
+    <link rel="stylesheet" href="style.css" type="text/css" media="all" />
+    <style>
+      html {
+        height: 100%;
+      }
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      .choice__contents {
+        padding: 0 10px;
+        line-height: 135%;
+        background-color: #fff;
+      }
+
+      .choice__item {
+        margin: 20px 0;
+        position: relative;
+        padding: 10px;
+        border-radius: 20px;
+        text-align: center;
+        /* box-shadow: 0px 5px 5px #ddd; */
+        background-color: #eee;
+        border:solid #ddd 1px
+      }
+    </style>
+  </head>
+  <body>
+    <div id="contents" style="height: inherit">
+      <div
+        class="line__container"
+        style="height: inherit; display: flex; flex-direction: column"
+      >
+        <div class="line__title">AIコミュ障 - 僕たちはAIにすらまともに話しかけられない</div>
+
+        <div class="line__contents scroll" style="flex: 1" id="thread">
+          <!-- テンプレ
+          <div class="line__left">
+            <figure>
+              <img src="icon_sample.png" />
+            </figure>
+            <div class="line__left-text">
+              <div class="name">name</div>
+              <div class="text">text</div>
+            </div>
+          </div>
+
+          <div class="line__right">
+            <div class="text">text</div>
+            <span class="date">date</span>
+          </div>
+          -->
+        </div>
+
+        <div class="choice__contents" id="choice">
+          <!--
+          <div class="choice__item">hoge</div>
+          <div class="choice__item">fuga</div>
+          -->
+        </div>
+
+      </div>
+    </div>
+    <script type="text/javascript">
+      //
+      // Const
+      //
+      const ChatGPT_MessageRequestBase = {
+        model: "gpt-3.5-turbo-0613",
+        frequency_penalty: 0.5,
+        max_tokens: 100,
+        presence_penalty: 0,
+        temperature: 1.2,
+        n: 1,
+        messages: [],
+      };
+
+      const ChatGPT_MessageBase = {
+        role: "system", // system, assistant, user
+        content: "",
+      };
+
+      const assistantPrompt = `
+以下の要件に従って、わたしとおしゃべりしましょう。
+・５０文字以内であること。
+・簡潔な文章であること。
+・好意的と捉えられる文体であること。
+・例で用いている「私：」「あなた：」の表記は返事に含めないこと。
+・快活な性格を装うこと。
+###例
+私：この間、ずっとベータ版だった新作のゲームがついにリリースされたんですよ。
+あなた：へぇ～、どんなゲームなの？
+私：かばんに武器を詰め込んだ冒険者が、ダンジョンに潜るゲームなんだけどね、プレイヤーが出来るのはかばんにどんな武器を入れるかだけなんだ。
+あなた：それで？
+私：で、後はゲーム内の冒険者が自動で探索をしていくゲームさ！
+あなた：
+`;
+
+      const choicerPrompt = `
+以下の要件に従って、私の発言に対する返答を考えてください。
+・５０文字以内であること。
+・簡潔な文章であること。
+・好意的と捉えられる文体であること。
+・可能であれば質問を投げかける形であること。
+・例で用いている「私：」「あなた：」の表記は返答に含めないこと。
+###例
+私：こんにちは！
+あなた:こんにちは。今日の調子はいかがですか？
+私：まぁ、ほどほどですかね。
+あなた：悪くないと言うだけでも良い事ですね。
+私：それもそうですね。
+あなた：
+`;
+
+Util = {}
+ Util.getQueryHash = function () {
+   var result = {};
+   var query = document.location.search;
+   if (query.length < 1) return result;
+ 
+   query = query.substring(1);
+   var kvs = query.split('&amp;');
+   for (var i = 0; i < kvs.length; i++) {
+     var element = kvs[i].split('=');
+     var key = decodeURIComponent(element[0]);
+     var value = decodeURIComponent(element[1]);
+     result[key] = decodeURIComponent(value);
+   }
+   return result;
+ }
+
+      //
+      // Variable
+      //
+      const gl_messages = [
+        { role: "system", content: assistantPrompt },
+        { role: "user", content: "こんにちは、ご機嫌イカが？" },
+      ];
+
+      let gl_choices = []
+
+      //
+      // fetchAPI
+      //
+      async function fetchGPT(requestBody) {
+        token = Util.getQueryHash().t;
+        const r = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(requestBody),
+        });
+        return r.json();
+      }
+
+      //
+      // ChatGPTに問い合わせ（アシスタント）
+      //
+      async function requestGPT(messages) {
+        const requestBody = new Object(ChatGPT_MessageRequestBase);
+        requestBody.messages = messages;
+        return fetchGPT(requestBody);
+      }
+
+      //
+      // ChatGPTに問い合わせ（選択肢提案）
+      //
+      async function requestChoice(prevMessage) {
+        const requestBody = new Object(ChatGPT_MessageRequestBase);
+        requestBody.max_tokens = 100;
+        requestBody.n = 20;
+        requestBody.messages = [
+          {
+            role: "system",
+            content: choicerPrompt,
+          },
+          { role: "user", content: prevMessage },
+        ];
+        return fetchGPT(requestBody);
+      }
+
+      //
+      // 応答から中途半端な回答を枝切り
+      //
+      function trimError(choices){
+        const newChoices = []
+
+        choices.forEach(choice=>{
+          if(choice.finish_reason != "stop") return;
+          newChoices.push(choice)
+        })
+
+        return newChoices;
+      }
+
+
+      //
+      // メッセージのレンダリング
+      //
+      function renderMessage(message) {
+        const role = message.role;
+        const content = message.content;
+
+        const threadEl = document.querySelector("#thread");
+
+        if (role == "assistant") {
+          threadEl.insertAdjacentHTML(
+            "beforeend",
+            `
+              <div class="line__left">
+                <figure>
+                  <img src="icon.png" />
+                </figure>
+                <div class="line__left-text">
+                  <div class="name">メイミー</div>
+                  <div class="text">${content}</div>
+                </div>
+              </div>
+            `
+          );
+        } else {
+          threadEl.insertAdjacentHTML(
+            "beforeend",
+            `
+              <div class="line__right">
+                <div class="text">${content}</div>
+                <span class="date">${new Date().toLocaleTimeString()}</span>
+              </div>
+            `
+          );
+        }
+
+        setTimeout(()=>{
+          threadEl.scrollTop = threadEl.scrollHeight;
+        }, 0)
+      }
+
+      //
+      // 選択肢のレンダリング
+      //
+      function renderChoice(choices) {
+        const choiceEl = document.querySelector("#choice");
+        choiceEl.innerHTML = "";
+
+        const maxIdx = 2;
+        for(i=0; i < choices.length; i++){
+          if(i >= maxIdx) break;
+          const choice = choices[i]
+
+          const role = choice.message.role;
+          const content = choice.message.content;
+
+          choiceEl.insertAdjacentHTML(
+            "beforeend",
+            `<div class="choice__item" onClick="call('${i}')">${content}</div> `
+          );
+
+        }
+      }
+      function clearChoice(){
+        const choiceEl = document.querySelector("#choice");
+        choiceEl.innerHTML = "";
+
+        choiceEl.insertAdjacentHTML(
+            "beforeend",
+            `<div class="choice__item"">考え中・・・</div> `
+          );
+
+      }
+
+      //
+      // 発話
+      //
+
+      async function callImpl(){
+
+        const responce = await requestGPT(gl_messages);
+        const choice = responce.choices[0];
+        const message = choice.message;
+        gl_messages.push(message);
+
+        if(choice.finish_reason != "stop"){
+          callImpl()
+          renderMessage(message);
+          return;
+        }
+
+        const choiceRes = await requestChoice(message.content);
+        const trimedChoiceRes = trimError(choiceRes.choices);
+        const choices = trimedChoiceRes;
+        gl_choices = choices
+
+        renderMessage(message);
+        renderChoice(choices);
+
+      }
+
+      async function call(index) {
+        clearChoice();
+        const sender = gl_choices[index].message.content;
+        const newMessage = {
+          role: "user",
+          content: sender,
+        };
+        gl_messages.push(newMessage);
+        renderMessage(newMessage);
+
+        callImpl();
+      }
+
+      async function firstCall() {
+        if(!Util.getQueryHash().t){
+          const threadEl = document.querySelector("#thread");
+          threadEl.insertAdjacentHTML(
+            "beforeend",
+            `
+              <div class="line__left">
+                <figure>
+                  <img src="icon.png" />
+                </figure>
+                <div class="line__left-text">
+                  <div class="name">メイミー</div>
+                  <div class="text">ChatGPTのトークンをクエリ文字列tに含めてください。</div>
+                </div>
+              </div>
+            `
+          );
+          return;
+        }
+
+        callImpl();
+      }
+
+      firstCall();
+
+      /*
+        TODO: スレッド上限
+      */
+    </script>
+  </body>
+</html>
