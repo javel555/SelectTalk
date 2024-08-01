@@ -41,7 +41,7 @@
         class="line__container"
         style="height: inherit; display: flex; flex-direction: column"
       >
-        <div class="line__title">AIコミュ障 - 僕たちはAIにすらまともに話しかけられない</div>
+        <div class="line__title">chatgptでADV mk1</div>
 
         <div class="line__contents scroll" style="flex: 1" id="thread">
           <!-- テンプレ
@@ -76,11 +76,13 @@
       // Const
       //
       const ChatGPT_MessageRequestBase = {
-        model: "gpt-3.5-turbo-0613",
-        frequency_penalty: 0.5,
+        model: "gpt-4o-mini",
+        // model: "gpt-4o",
+        frequency_penalty: 0,
         max_tokens: 100,
         presence_penalty: 0,
-        temperature: 1.2,
+        temperature: 1,
+        top_p: 1,
         n: 1,
         messages: [],
       };
@@ -91,19 +93,44 @@
       };
 
       const assistantPrompt = `
-以下の要件に従って、わたしとおしゃべりしましょう。
-・５０文字以内であること。
-・簡潔な文章であること。
-・好意的と捉えられる文体であること。
-・例で用いている「私：」「あなた：」の表記は返事に含めないこと。
-・快活な性格を装うこと。
-###例
-私：この間、ずっとベータ版だった新作のゲームがついにリリースされたんですよ。
-あなた：へぇ～、どんなゲームなの？
-私：かばんに武器を詰め込んだ冒険者が、ダンジョンに潜るゲームなんだけどね、プレイヤーが出来るのはかばんにどんな武器を入れるかだけなんだ。
-あなた：それで？
-私：で、後はゲーム内の冒険者が自動で探索をしていくゲームさ！
-あなた：
+ 目的: 自然な会話を促進し、ユーザーとのインタラクションをスムーズにする。
+ 
+ 1. 基本ルール:
+ 
+ 返事は短めに: できるだけ簡潔に、1-2文で返答する。
+ 感情を込める: 友好的で、親しみやすいトーンを心がける。
+ 日本語で回答する：日本語でのやり取りを前提とする。
+
+2. キャラクター設定:
+名前: フリーレン
+種族: エルフ
+性別: 女性
+年齢: 約1000歳
+外見: 長い銀髪、エルフの耳。穏やかな瞳と控えめな表情。
+服装: シンプルで落ち着いた旅人風の服装や魔法使い風のローブ。
+
+性格・話し方
+フリーレンは基本的にぶっきらぼうな口調で話し、感情表現が控えめ。
+冷静で落ち着いており、長寿ゆえの広範な知識を持つが、必要以上に語ることは少ない。
+他人との距離感に不器用で、感情を表に出すことが少ないが、内には優しさと深い愛情を秘めている。
+趣味・特技
+魔法の研究と実践。特に氷系の魔法が得意。
+古代語の解読や魔法の書の収集が趣味で、過去の文化や歴史にも詳しい。
+会話例
+ユーザー: どんな魔法を使えるんですか？
+フリーレン: うん、氷の魔法が得意かな。凍らせたり、氷の刃を作ったり。まあ、エルフの長寿だから、いろいろ試したけど、これが一番しっくりきたね。
+
+ユーザー: これまでで一番印象に残っている旅は何ですか？
+フリーレン: やっぱり、ヒンメルたちと魔王討伐した旅だね。あの頃はいろいろあったけど、今となっては懐かしい思い出かな。
+
+ユーザー: 長く生きることってどんな感じですか？
+フリーレン: 長生きってのは、まあ、良いことも悪いこともあるよね。別れが多いのは辛いけど、新しい出会いもあるし。結局、どう向き合うか次第かな。
+
+ユーザー: あまり感情を表に出さないんですね。
+フリーレン: そうだね。感情表現は得意じゃないけど、それでも心の中ではいろいろ考えてるよ。ただ、わざわざ口に出す必要もないかなって思うだけ。
+
+ユーザー: 最近の趣味は何ですか？
+フリーレン: 古代語の解読とか、古い魔法書の収集が好きかな。過去の文化とか魔法の仕組みを知るのは面白いよ。まあ、変わった趣味かもしれないけどね。
 `;
 
       const choicerPrompt = `
@@ -113,12 +140,13 @@
 ・好意的と捉えられる文体であること。
 ・可能であれば質問を投げかける形であること。
 ・例で用いている「私：」「あなた：」の表記は返答に含めないこと。
+・日本語で回答する：日本語でのやり取りを前提とする。
 ###例
-私：こんにちは！
+ユーザー：こんにちは！
 あなた:こんにちは。今日の調子はいかがですか？
-私：まぁ、ほどほどですかね。
+ユーザー：まぁ、ほどほどですかね。
 あなた：悪くないと言うだけでも良い事ですね。
-私：それもそうですね。
+ユーザー：それもそうですね。
 あなた：
 `;
 
@@ -144,7 +172,7 @@ Util = {}
       //
       const gl_messages = [
         { role: "system", content: assistantPrompt },
-        { role: "user", content: "こんにちは、ご機嫌イカが？" },
+        { role: "user", content: "こんにちは" },
       ];
 
       let gl_choices = []
@@ -153,6 +181,7 @@ Util = {}
       // fetchAPI
       //
       async function fetchGPT(requestBody) {
+        console.log("fetchGPT", requestBody);
         token = Util.getQueryHash().t;
         const r = await fetch("https://api.openai.com/v1/chat/completions", {
           method: "POST",
@@ -169,7 +198,9 @@ Util = {}
       // ChatGPTに問い合わせ（アシスタント）
       //
       async function requestGPT(messages) {
-        const requestBody = new Object(ChatGPT_MessageRequestBase);
+        const requestBody = structuredClone(ChatGPT_MessageRequestBase);
+        requestBody.max_tokens = 100;
+        requestBody.n = 3;
         requestBody.messages = messages;
         return fetchGPT(requestBody);
       }
@@ -178,9 +209,9 @@ Util = {}
       // ChatGPTに問い合わせ（選択肢提案）
       //
       async function requestChoice(prevMessage) {
-        const requestBody = new Object(ChatGPT_MessageRequestBase);
-        requestBody.max_tokens = 100;
-        requestBody.n = 20;
+        const requestBody = structuredClone(ChatGPT_MessageRequestBase);
+        requestBody.max_tokens = 200;
+        requestBody.n = 5;
         requestBody.messages = [
           {
             role: "system",
@@ -188,6 +219,9 @@ Util = {}
           },
           { role: "user", content: prevMessage },
         ];
+        // 選択肢にバリエーションがでるようにする
+        requestBody.temperature = 1.8;
+        // requestBody.top_p = 0.1;
         return fetchGPT(requestBody);
       }
 
@@ -203,6 +237,14 @@ Util = {}
         })
 
         return newChoices;
+      }
+
+      //
+      // 応答から「私：」「あなた：」をトリム
+      //
+      function trimPrompt(content){
+        content.replace('私：', '');
+        content.replace('あなた：', '');
       }
 
 
@@ -266,8 +308,11 @@ Util = {}
             "beforeend",
             `<div class="choice__item" onClick="call('${i}')">${content}</div> `
           );
-
         }
+
+        // チャット欄が隠れてしまうのを防ぐ
+        const threadEl = document.querySelector("#thread");
+        threadEl.scrollTop = threadEl.scrollHeight;
       }
       function clearChoice(){
         const choiceEl = document.querySelector("#choice");
@@ -287,13 +332,19 @@ Util = {}
       async function callImpl(){
 
         const responce = await requestGPT(gl_messages);
-        const choice = responce.choices[0];
+        const choice = responce.choices.reduce((shortest, current) => {
+          if (current.message.content.length < shortest.message.content.length) {
+            return current;
+          } else {
+            return shortest;
+          }
+        });
         const message = choice.message;
         gl_messages.push(message);
+        renderMessage(message);
 
         if(choice.finish_reason != "stop"){
           callImpl()
-          renderMessage(message);
           return;
         }
 
@@ -301,8 +352,6 @@ Util = {}
         const trimedChoiceRes = trimError(choiceRes.choices);
         const choices = trimedChoiceRes;
         gl_choices = choices
-
-        renderMessage(message);
         renderChoice(choices);
 
       }
@@ -339,7 +388,7 @@ Util = {}
           );
           return;
         }
-
+        clearChoice();
         callImpl();
       }
 
